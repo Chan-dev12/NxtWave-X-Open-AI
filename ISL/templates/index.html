@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SignLink AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;500;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1d976c;
+            --gradient-start: #ff6ec4;
+            --gradient-mid: #7873f5;
+            --gradient-end: #1fd1f9;
+            --bg-overlay: rgba(255, 255, 255, 0.1);
+            --result-bg: rgba(0, 0, 0, 0.3); /* New: Darker background for results */
+            --white: #ffffff;
+            --yellow-glow: #ffe259;
+            --blue-glow: #00e6ff;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Lexend', sans-serif;
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-mid), var(--gradient-end));
+            background-size: 600% 600%;
+            animation: multicolorBG 20s ease infinite;
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 40px 20px;
+        }
+
+        @keyframes multicolorBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .container {
+            background: var(--bg-overlay);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 20px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+            padding: 40px;
+            max-width: 700px;
+            width: 100%;
+            text-align: center;
+            color: var(--white);
+        }
+
+        h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 3rem;
+            margin-bottom: 30px;
+            background: linear-gradient(90deg, var(--yellow-glow), #ffa751);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0px 2px 8px rgba(0,0,0,0.4);
+        }
+
+        input[type="text"] {
+            padding: 14px 16px;
+            width: 100%;
+            font-size: 1rem;
+            border: none;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
+            outline: none;
+            background-color: rgba(255,255,255,0.2);
+            color: #fff;
+            font-weight: 500;
+        }
+
+        input::placeholder {
+            color: #eee;
+            opacity: 0.8;
+        }
+
+        .btn-group {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 26px;
+            font-size: 1rem;
+            border: none;
+            background-color: rgba(255,255,255,0.2);
+            color: var(--white);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: 0.3s ease;
+            font-weight: bold;
+            backdrop-filter: blur(5px);
+        }
+
+        button:hover {
+            transform: scale(1.08);
+            background-color: rgba(255,255,255,0.3);
+        }
+
+        video, img {
+            max-width: 100%;
+            max-height: 350px;
+            margin-top: 20px;
+            border-radius: 14px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+            border: 2px solid var(--blue-glow); /* Highlight media */
+        }
+
+        #mediaContainer {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 15px;
+            background: var(--result-bg); /* Darker container for results */
+            min-height: 100px; /* Ensure container is visible */
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
+        
+        #mediaContainer p, #mediaContainer a {
+            padding: 5px 0;
+            margin: 5px 0;
+            line-height: 1.4;
+        }
+
+        .spinner {
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid var(--yellow-glow);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 30px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SignLink AI</h1>
+        <p style="margin-bottom: 20px; font-weight: 300;">Translate Sentences or Search Concepts</p>
+
+        <form id="searchForm">
+            <input type="text" id="searchInput" placeholder="Search a concept (e.g., Chennai, Physics)" required>
+            <div class="btn-group">
+                <button type="submit">Search & Convert</button>
+            </div>
+        </form>
+
+        <form id="aslForm">
+            <input type="text" name="text" id="textInput" placeholder="Enter your sentence (e.g., I am happy)" required>
+            <div class="btn-group">
+                <button type="button" onclick="startListening()">🎤 Speak</button>
+                <button type="submit">Convert Sentence</button>
+                <button type="button" id="replayButton">Replay</button>
+            </div>
+        </form>
+
+        <hr style="border: 0; height: 1px; background-image: linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0)); margin: 30px 0;">
+
+        <div id="mediaContainer">
+            <p style="font-weight: 500; color: #aaa;">Results will be displayed below.</p>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById("aslForm");
+        const searchForm = document.getElementById("searchForm");
+        const mediaContainer = document.getElementById("mediaContainer");
+        const replayButton = document.getElementById("replayButton");
+
+        let mediaList = [];
+        let currentIndex = 0;
+
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            mediaContainer.innerHTML = '<div class="spinner"></div>';
+
+            const formData = new FormData(form);
+            const response = await fetch("/convert", { method: "POST", body: formData });
+            const data = await response.json();
+
+            mediaList = data.media;
+            currentIndex = 0;
+
+            const glossDisplay = document.createElement("p");
+            glossDisplay.innerHTML = `<strong>ASL Gloss:</strong> ${data.asl_gloss}`;
+            glossDisplay.style.marginTop = "10px";
+            glossDisplay.style.marginBottom = "20px";
+
+            mediaContainer.innerHTML = "";
+            mediaContainer.appendChild(glossDisplay);
+            playNext();
+        });
+
+        searchForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const query = document.getElementById("searchInput").value;
+            mediaContainer.innerHTML = '<div class="spinner"></div>';
+
+            const response = await fetch("/search_convert", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query: query })
+            });
+
+            const data = await response.json();
+            mediaList = data.media;
+            currentIndex = 0;
+
+            // CORRECTED: Using data.summary and data.link (keys from app.py)
+            const summaryDisplay = document.createElement("p");
+            const summaryText = data.summary || "No detailed summary available.";
+            summaryDisplay.innerHTML = `<strong style="color:var(--yellow-glow);">Summary:</strong> ${summaryText}`;
+            summaryDisplay.style.textAlign = 'left';
+            summaryDisplay.style.marginBottom = '15px';
+
+
+            const glossDisplay = document.createElement("p");
+            glossDisplay.innerHTML = `<strong style="color:var(--yellow-glow);">Signs for Explanation (ASL Gloss):</strong> ${data.asl_gloss || 'N/A'}`;
+            glossDisplay.style.textAlign = 'left';
+            
+            mediaContainer.innerHTML = "";
+            mediaContainer.appendChild(summaryDisplay);
+            mediaContainer.appendChild(glossDisplay);
+
+            // Display the Wikipedia link if it exists
+            if (data.link) {
+                const wikiLink = document.createElement("a");
+                wikiLink.href = data.link; 
+                wikiLink.target = "_blank";
+                wikiLink.textContent = "🔗 Read Full Article on Wikipedia";
+                wikiLink.style.display = "block";
+                wikiLink.style.marginTop = "15px";
+                wikiLink.style.color = "var(--blue-glow)";
+                wikiLink.style.textDecoration = "none";
+                wikiLink.style.fontWeight = "bold";
+                wikiLink.style.transition = "0.3s ease";
+                wikiLink.style.textAlign = 'left';
+                wikiLink.onmouseover = () => wikiLink.style.opacity = '0.8';
+                wikiLink.onmouseout = () => wikiLink.style.opacity = '1';
+                mediaContainer.appendChild(wikiLink);
+            }
+            
+            // If the output is a video sign for the word (e.g., 'hello'), mediaList will contain a path.
+            if (mediaList && mediaList.length > 0) {
+                 const videoHeader = document.createElement('h3');
+                 videoHeader.textContent = mediaList.length === 1 ? 'Sign Found' : 'Signs for Summary';
+                 videoHeader.style.color = 'var(--yellow-glow)';
+                 videoHeader.style.marginTop = '25px';
+                 videoHeader.style.fontSize = '1.2rem';
+                 mediaContainer.appendChild(videoHeader);
+            }
+
+
+            playNext();
+        });
+
+        replayButton.addEventListener("click", () => {
+            if (mediaList.length > 0) {
+                currentIndex = 0;
+                // Clear previous video elements before replaying
+                const videoElements = mediaContainer.querySelectorAll('video, img');
+                videoElements.forEach(el => el.remove());
+                playNext();
+            }
+        });
+
+        function playNext() {
+            if (currentIndex >= mediaList.length) return;
+            const path = mediaList[currentIndex];
+            const ext = path.split(".").pop().toLowerCase();
+
+            const mediaElement = document.createElement(ext === "gif" ? "img" : "video");
+            mediaElement.src = path;
+            mediaElement.controls = false;
+            mediaElement.autoplay = true;
+            mediaElement.style.marginTop = "20px";
+            mediaElement.style.borderRadius = "15px";
+            mediaElement.style.boxShadow = "0 8px 24px rgba(0,0,0,0.3)";
+            mediaElement.style.display = 'block'; 
+            mediaElement.style.marginLeft = 'auto';
+            mediaElement.style.marginRight = 'auto';
+
+
+            mediaElement.onended = () => {
+                currentIndex++;
+                // Remove the finished element before playing the next
+                mediaElement.remove(); 
+                playNext();
+            };
+
+            mediaContainer.appendChild(mediaElement);
+
+            // For GIF (no native 'onended' event), use a timer
+            if (ext === "gif") {
+                mediaElement.onloadeddata = () => {
+                    const duration = mediaElement.duration * 1000 || 2000; // Fallback to 2 seconds
+                    setTimeout(() => {
+                         mediaElement.remove();
+                         currentIndex++;
+                         playNext();
+                    }, duration);
+                }
+            }
+
+            // Scroll to the bottom of the container to show the new media
+            mediaContainer.scrollIntoView({ behavior: "smooth", block: "end" });
+        }
+
+        function startListening() {
+            const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+
+            recognition.onresult = function(event) {
+                document.getElementById("textInput").value = event.results[0][0].transcript;
+            };
+
+            recognition.onerror = function(event) {
+                alert("Speech recognition error: " + event.error);
+            };
+
+            recognition.start();
+        }
+    </script>
+</body>
+</html>
