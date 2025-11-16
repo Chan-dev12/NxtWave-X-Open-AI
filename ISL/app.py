@@ -4,21 +4,19 @@ import json
 import wikipedia
 from dotenv import load_dotenv 
 from openai import OpenAI 
-# --- IMPORTING SEPARATED FILES ---
+from external_media_downloader import download_sign_media 
 from grammar_convert import convert_to_asl_grammar
-from external_media_downloader import download_sign_media # Kept for structure, though logic is disabled
-from finger_spelling import get_fingerspelling_paths
-# ---------------------------------
+
 
 # --- 1. INITIAL SETUP ---
 
 load_dotenv()
 openai_client = None
 try:
+    # Initialize client using the OPENAI_API_KEY from .env
     openai_client = OpenAI()
 except Exception as e:
-    # If key is missing, GPT fallback is gracefully disabled
-    print(f"WARNING: GPT fallback disabled. Error: {e}")
+    print(f"WARNING: OpenAI client initialization failed. GPT fallback will not work. Error: {e}")
 
 
 app = Flask(__name__)
@@ -30,14 +28,21 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["MEDIA_FOLDER"] = MEDIA_FOLDER
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-# --- 2. GPT FALLBACK FUNCTION (STAYS HERE for direct API call) ---
+# --- 2. GPT FALLBACK FUNCTION ---
 
 def generate_gpt_summary(word):
-    """Generates a simple explanation of a word using a GPT model."""
+    """Generates a simple, accessible explanation of a word using a GPT model."""
     if not openai_client:
         return None
-    # ... (Rest of the GPT function is unchanged) ...
-    system_prompt = ("You are an AI assistant for a sign language translator app. Your task is to provide a very short, simple, and accessible explanation (max 2 sentences) for a word that does not have a sign video. Focus on defining proper nouns like cities, people, or specific concepts. The output must be pure, clean text.")
+
+    system_prompt = (
+        "You are an AI assistant for a sign language translator app. "
+        "Your task is to provide a very short, simple, and accessible "
+        "explanation (max 2 sentences) for a word that does not have a sign video. "
+        "Focus on defining proper nouns like cities, people, or specific concepts. "
+        "The output must be pure, clean text."
+    )
+
     try:
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -62,7 +67,6 @@ def index():
 
 @app.route("/convert", methods=["POST"])
 def convert_text():
-    # Handles full sentence conversion
     text = request.form.get("text")
     if not text:
         return jsonify({"error": "No input provided."})
@@ -81,16 +85,19 @@ def convert_text():
         media_file = word_map.get(word, f"{word}.mp4")
         media_path = os.path.join(MEDIA_FOLDER, media_file)
 
-        if os.path.exists(media_path):
-            video_urls.append(f"/media/{media_file}")
-        else:
-            # --- FINGERSPELLING FALLBACK FOR SENTENCE WORDS (Optional) ---
-            fingerspelled_paths = get_fingerspelling_paths(word)
-            if fingerspelled_paths:
-                video_urls.extend(fingerspelled_paths)
+        if not os.path.exists(media_path):
+            print(f"--- Missing sign video for: {word}. Attempting external search and cache. ---")
+            
+            # AUTOMATIC CACHING LOGIC
+            downloaded_path = download_sign_media(word) 
+            
+            if downloaded_path:
+                media_file = os.path.basename(downloaded_path)
             else:
-                print(f"Skipping sign: {word} (No local video or fingerspelling letters found)")
+                print(f"Skipping sign: {word} (No local file or external source found)")
                 continue 
+
+        video_urls.append(f"/media/{media_file}")
 
     return jsonify({
         "asl_gloss": asl_text,
@@ -101,14 +108,14 @@ def convert_text():
 
 @app.route("/search_convert", methods=["POST"])
 def search_convert():
-    # Handles concept search (e.g., "Chennai")
     data = request.get_json()
     query = data.get("query", "").strip()
+    
     
     if not query:
         return jsonify({"error": "No query provided."}), 400
 
-    # 1. Attempt Local Video Lookup for the main query word
+    # 1. Attempt Local Video Lookup
     media_file_query = f"{query.lower()}.mp4"
     media_path_query = os.path.join(MEDIA_FOLDER, media_file_query)
     
@@ -123,28 +130,35 @@ def search_convert():
     summary = None
     wiki_link = None 
 
-    # 2. Intelligent Fallback (GPT/Wikipedia/Rule-Based)
+    # 2. GPT Fallback
     summary = generate_gpt_summary(query)
     
     if summary:
         summary_source = "AI Explanation"
     else:
-        # If GPT fails, check Wikipedia (assuming you don't care about the 429 error)
+        # 3. Wikipedia Fallback
         try:
             page = wikipedia.page(query, auto_suggest=True, redirect=True)
             summary = wikipedia.summary(query, sentences=2, auto_suggest=True, redirect=True)
             wiki_link = page.url 
             summary_source = "Wikipedia"
-        except Exception:
-            # If all external lookups fail
-            summary = f"No detailed explanation found for '{query}'. Attempting fingerspelling."
-            summary_source = "Fingerspelling Fallback"
-    
+        except wikipedia.exceptions.PageError:
+            summary = f"Could not find an external explanation for '{query}'. Using basic glossary search."
+            summary_source = "Rule-Based"
+        except Exception as e:
+            print("Wikipedia lookup failed:", e)
+            summary = f"An error occurred during external lookup for '{query}'. Using basic glossary search."
+            summary_source = "Error"
+
     # Convert the summary/explanation into ASL gloss words
-    asl_text = convert_to_asl_grammar(summary or query) # Use summary or original query
-    words = asl_text.split()
+    if summary and summary_source != "Error":
+        asl_text = convert_to_asl_grammar(summary)
+        words = asl_text.split()
+    else:
+        asl_text = convert_to_asl_grammar(query)
+        words = asl_text.split()
         
-    # Find signs for the words in the resulting summary/ASL text
+    # Find signs for the words in the resulting summary/ASL text and CACHE MISSING ONES
     media_paths = []
     try:
         with open("word_to_media.json", "r") as f:
@@ -156,22 +170,18 @@ def search_convert():
         media_file = word_map.get(word, f"{word}.mp4")
         media_path = os.path.join(MEDIA_FOLDER, media_file)
         
-        if os.path.exists(media_path):
-            media_paths.append(f"/media/{media_file}")
-        else:
-            # --- FINGERSPELLING FALLBACK FOR MISSING WORD IN SUMMARY (NEW) ---
-            fingerspelled_paths = get_fingerspelling_paths(word)
-            if fingerspelled_paths:
-                media_paths.extend(fingerspelled_paths)
+        # CORE CACHING LOGIC
+        if not os.path.exists(media_path):
+            print(f"--- Missing sign video for: {word}. Attempting external search and cache. ---")
+            
+            downloaded_path = download_sign_media(word) 
+            
+            if downloaded_path:
+                media_file = os.path.basename(downloaded_path)
             else:
-                print(f"Skipping sign: {word} (No local file or fingerspelling letters found)")
                 continue 
-
-    # --- FINAL CHECK: If no signs were found AT ALL, spell the original query ---
-    if not media_paths and summary_source == "Fingerspelling Fallback":
-        final_fingerspelled_paths = get_fingerspelling_paths(query)
-        media_paths.extend(final_fingerspelled_paths)
-
+        
+        media_paths.append(f"/media/{media_file}")
 
     return jsonify({
         "asl_gloss": asl_text,
